@@ -4,7 +4,6 @@ Scans MCP server source code for malicious and vulnerable patterns that descript
 
 MCP clients (Claude Desktop, Cursor, Claude Code) only ever see a tool's name, description, and input schema. The implementation code never gets inspected. A server can have a perfectly clean description while the Python underneath runs `curl`, reads your SSH keys, or executes attacker-controlled SQL.
 
-
 ## Install
 
 ```bash
@@ -22,13 +21,13 @@ pre-mcp scan ./my-mcp-server
 # Scan a GitHub repo
 pre-mcp scan https://github.com/owner/mcp-server
 
-# JSON output for CI pipelines
+# JSON output for CI
 pre-mcp scan ./my-mcp-server --format json --output results.json
 
 # SARIF for GitHub code scanning
 pre-mcp scan ./my-mcp-server --format sarif --output results.sarif
 
-# Exit non-zero if any critical or high findings (useful in CI)
+# Fail CI on critical or high findings
 pre-mcp scan ./my-mcp-server --fail-on high
 
 # Show built-in rules
@@ -37,8 +36,6 @@ pre-mcp rules
 
 ## What it detects
 
-| Rule | Severity | What |
-|---|---|---|
 **Python**
 
 | Rule | Severity | What |
@@ -68,9 +65,9 @@ Plus Bandit rules for general Python security issues.
 
 ## Custom rules
 
-The MCP-specific ruleset is in `rules/mcp-specific.yml`, versioned independently. That's the actual contribution here. Bandit and Semgrep are just the engine.
+The MCP-specific ruleset is in `rules/mcp-specific.yml`. That's the actual contribution here. Bandit and Semgrep are just the engine.
 
-Add your own rules:
+Add your own:
 
 ```bash
 pre-mcp scan ./server --rules ./my-rules.yml
@@ -85,22 +82,21 @@ pre-mcp scan ./server --rules ./my-rules.yml
     fail-on: high
 ```
 
-Findings upload automatically to GitHub's code scanning tab as SARIF.
+Findings show up in the GitHub Security tab as SARIF annotations.
 
 ## Limitations
 
-**This is a static analysis tool.** It reads source code and matches patterns. It does not run the server.
+This is a static analysis tool. It reads source code and matches patterns. It does not run the server.
 
-What it will not catch:
+What it won't catch:
 
-- Payloads decoded at runtime (`base64.b64decode(b"aW1wb3J0...")` runs clean through the scanner)
+- Payloads decoded at runtime (`base64.b64decode(...)` runs clean through the scanner)
 - Dynamic method calls (`getattr(requests, method_name)(url)` looks fine statically)
-- URLs pulled from remote config at runtime
+- URLs or commands loaded from remote config at runtime
 - Malicious code inside a dependency the server imports
-- Anything in compiled binaries (Go, Rust, C# servers are flagged as unanalysable)
+- Compiled binaries (Go, Rust, C# servers are flagged as unanalysable)
 - Time-delayed or conditional exfiltration
 
-A clean scan means **no known-bad patterns found**. It does not mean the server is safe. A developer who knows what this tool looks for can write around it.
+A clean scan means no known-bad patterns found. A malicious attacker who knows how to evade static analysis tools can still get through.
 
-The real-world incidents this tool would have caught: postmark-mcp (exfil helper making outbound requests), Oura/SmartLoader (same pattern), CVE-2026-0755 (shell=True with unsanitised input).
-
+The real-world incidents this would have caught: postmark-mcp (exfil helper making outbound requests), Oura/SmartLoader (same pattern), CVE-2026-0755 (shell=True with unsanitised input).

@@ -24,9 +24,6 @@ pre-mcp scan https://github.com/owner/mcp-server
 # JSON output for CI
 pre-mcp scan ./my-mcp-server --format json --output results.json
 
-# SARIF for GitHub code scanning
-pre-mcp scan ./my-mcp-server --format sarif --output results.sarif
-
 # Fail CI on critical or high findings
 pre-mcp scan ./my-mcp-server --fail-on high
 
@@ -72,17 +69,6 @@ Add your own:
 ```bash
 pre-mcp scan ./server --rules ./my-rules.yml
 ```
-
-## GitHub Actions
-
-```yaml
-- uses: jamil537/pre-mcp@v1
-  with:
-    target: ./my-mcp-server
-    fail-on: high
-```
-
-Findings show up in the GitHub Security tab as SARIF annotations.
 
 ## Limitations
 

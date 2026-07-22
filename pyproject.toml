@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pre-mcp"
+version = "0.1.0"
+description = "Static analysis scanner for MCP server implementation code — finds malicious patterns invisible to description-only scanners"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1",
+    "rich>=13.0",
+    "bandit>=1.7",
+    "semgrep>=1.50",
+    "requests>=2.31",
+    "gitpython>=3.1",
+    "pip-audit>=2.6",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov"]
+
+[project.scripts]
+pre-mcp = "pre_mcp.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

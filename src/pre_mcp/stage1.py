@@ -43,27 +43,20 @@ def _run_semgrep_custom(target: ScanTarget) -> list[Finding]:
                 findings.extend(_run_semgrep(full, str(rules_file), timeout=180))
         return findings
 
-    # Fallback: scan all source files, skipping noise directories
-    SKIP = {"node_modules", "__pycache__", "dist", "build", ".next", ".venv", "venv"}
-    src_files = [
-        f for f in target.resolved_path.rglob("*")
-        if f.is_file() and not any(p in f.parts for p in SKIP)
-        and f.suffix in (".py", ".js", ".ts", ".mjs")
-    ]
-    if not src_files:
-        return _run_semgrep(target.resolved_path, str(rules_file), timeout=180)
-    findings = []
-    for sf in src_files:
-        findings.extend(_run_semgrep(sf, str(rules_file), timeout=60))
-    return findings
+    # Fallback: scan the directory with semgrep, excluding noise dirs
+    return _run_semgrep(
+        target.resolved_path, str(rules_file), timeout=300,
+        exclude=["node_modules", "__pycache__", "dist", "build", ".next", ".venv", "venv"],
+    )
 
 
-def _run_semgrep(path: Path, config: str, timeout: int = 120) -> list[Finding]:
+def _run_semgrep(path: Path, config: str, timeout: int = 120, exclude: list[str] | None = None) -> list[Finding]:
+    cmd = ["semgrep", "--config", config, "--json", "--no-autofix"]
+    for ex in (exclude or []):
+        cmd += ["--exclude", ex]
+    cmd.append(str(path))
     try:
-        result = subprocess.run(
-            ["semgrep", "--config", config, "--json", "--no-autofix", str(path)],
-            capture_output=True, text=True, timeout=timeout,
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,)
     except subprocess.TimeoutExpired:
         print(f"[warn] semgrep timed out scanning {path}", file=sys.stderr)
         return []
